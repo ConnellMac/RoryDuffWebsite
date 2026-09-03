@@ -1,0 +1,227 @@
+# Architecture
+
+## Architectural goals
+
+The system should keep public publishing, paid entitlement, cohort scheduling, and private member data clearly separated. Firebase Authentication is authoritative for identity; Stripe is authoritative for billing facts; Firestore is authoritative for application profiles, roles, projected entitlements, enrollments, schedules, unlocks, and learning state; WordPress is a read-only migration source; Resend is the delivery provider rather than the source of message eligibility.
+
+## High-level design
+
+```text
+Browser
+  -> Next.js on Vercel
+       -> Firebase Auth (identity)
+       -> Firestore (content metadata, learning state, discussions)
+       -> Firebase Storage (managed media and attachments)
+       -> Stripe API (checkout and portal; server only)
+       -> Resend API (transactional email; server only)
+       -> Weather provider (server-controlled requests/cache)
+
+Stripe webhooks -> verified server endpoint -> Firestore entitlement projection
+Scheduled jobs -> release/email workers -> Firestore + Resend
+WordPress export/API -> staging transform -> validated import -> Firebase systems
+Admin browser -> authenticated admin routes -> role-checked server operations
+```
+
+## Runtime boundaries
+
+### Next.js on Vercel
+
+- Public rendering, member application, and admin interface.
+- Server-side authorization for protected pages and mutations.
+- Route handlers/server actions for short request-response work.
+- SEO rendering, redirects, sitemap, structured data, and preview.
+- No privileged Firebase, Stripe, or Resend secret is exposed to the browser.
+
+### Firebase Authentication
+
+- Canonical application identity identified by Firebase `uid`.
+- Authentication proves identity; it does not by itself grant paid access.
+- Custom claims may accelerate broad role checks, but `adminRoleAssignments` in Firestore remains the durable role source. Claims are a cache with a version and expiry/revocation strategy, never the only authorization source for sensitive writes.
+- Initial providers are email/password with email verification and password reset. Identity/profile records key on Firebase `uid`, not provider email, so Google can be linked later.
+
+### Firestore
+
+- Canonical application records for profiles, content, curriculum, cohorts, compiled cohort-release schedules, unlocks, progress, private notes, discussions, meetups, job receipts, and audit events.
+- Denormalized read models are acceptable when updated by trusted, idempotent workers.
+- Collection paths and security rules enforce ownership and membership scope.
+
+### Firebase Storage
+
+- Original and derived media that belongs to the new platform.
+- Separate public, member-only, and private namespaces/buckets or strict path rules.
+- Downloads for protected assets use authorized requests or short-lived signed access; a public URL is not an entitlement boundary.
+
+### Firebase Cloud Functions
+
+Use when close integration with Firebase triggers, scheduled processing, or privileged background work materially simplifies reliability. Candidate responsibilities include cohort unlock materialization, scheduled release processing, Sunday email orchestration, denormalization, cleanup, and event-driven moderation workflows.
+
+Avoid splitting work arbitrarily between Vercel and Cloud Functions. Select one owner for every job and webhook. Stripe webhooks should have one canonical endpoint and one event receipt store.
+
+### Stripe
+
+- Products/prices represent monthly and annual plans.
+- Planning defaults are USD $19.99 monthly and USD $199 annual with identical entitlements. A server-owned plan configuration maps stable internal plan keys to environment-specific Stripe Price IDs and display values. Changing a price creates/selects a new Stripe Price; admins never alter charge amounts supplied by the browser.
+- Checkout Sessions initiate purchase; Customer Portal handles supported billing changes.
+- Webhooks are the authoritative source for subscription projection.
+- Stripe customer/subscription IDs are stored, but sensitive payment data is not.
+
+### Resend
+
+- Transactional/member email delivery.
+- Templates are versioned and sends have deterministic idempotency keys.
+- Delivery events update operational status and suppression state where supported.
+
+### Weather provider
+
+- Adapter interface isolates provider-specific response formats and licensing.
+- Forecasts are cached by meetup location and time window to control cost and rate limits.
+- Weather is advisory and includes observed/fetched time; failures degrade gracefully.
+
+## Application areas
+
+```text
+app/(public)     Public website and discovery
+app/(auth)       Sign-in, callback, recovery/onboarding
+app/(member)     Entitlement-protected Sacred Path experience
+app/(admin)      Role-protected editorial and operational tools
+app/api          Webhooks, controlled integrations, and route handlers
+```
+
+This is a future target shape, not an instruction to scaffold it during planning.
+
+## Content architecture
+
+- Public content: pages, articles, books, media items, taxonomies, navigation, redirects, and SEO fields.
+- Learning content: programs, module versions, modules, weeks, releases, reflection steps, and assets.
+- Publishing uses immutable/versioned learning content once assigned to a live cohort. Corrections create a new version or audited revision rather than silently changing historical meaning.
+- Rich text must use a defined portable schema and a strict rendering allowlist. Raw untrusted HTML is not rendered.
+- Admin preview is permissioned and cannot accidentally expose drafts.
+- Releases and weekly summaries are canonical website content records. Email jobs reference an approved content/template version; email is not the content source of truth.
+- Media references carry visibility and rights metadata. Protected downloads are authorized independently of the page containing their link.
+
+## Public, member, and admin separation
+
+| Surface | May read                                                                                                      | May write                                                                               |
+| ------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Public  | Published public Rory Duff, Sacred Network/Sites, events, and Sacred Path marketing content                   | Public forms only through validated/rate-limited endpoints                              |
+| Member  | Public content; entitled and cohort-unlocked releases/summaries/discussions; own profile, progress, and notes | Own allowed profile/preferences, progress, notes, and eligible discussion contributions |
+| Admin   | Only data allowed by assigned capabilities; private note/reflection bodies excluded by default                | Content/operations allowed by capability through validated server commands              |
+
+Separate route groups and UI are organizational controls. Server authorization, Firestore/Storage rules, and content visibility metadata are the actual security boundaries.
+
+## Progress architecture
+
+- Published curriculum items explicitly declare `required`, `itemType`, and stable identity.
+- A trusted progress service calculates two values; clients do not invent percentages.
+- Caught-up progress is `completedRequiredUnlocked / totalRequiredUnlocked`. Future locked weeks are excluded.
+- Overall programme progress is `completedRequiredProgramme / totalRequiredProgramme` for the enrollment's immutable curriculum version. Future required items are included in its denominator.
+- The service produces both clearly labeled, versioned projections for dashboard, email, and admin support views. Source completion records remain authoritative and projection drift is repairable.
+- A cohort's “current programme week” is derived from its immutable compiled week schedules. A stored current-week field is only a repairable projection, never a manually advanced source of truth.
+
+## Discussion abstraction
+
+- `discussionSpaces` is the stable application concept and always binds cohort plus module/week, optionally a release.
+- A space has a provider mode: initially `external`, later optionally `native`.
+- External mode stores an approved provider URL; native mode points to an internal discussion identifier/collection.
+- Authorization controls whether a member may discover/open the discussion even when the destination is external. External platforms enforce their own access after navigation, so expiring/invite link behavior requires operational review.
+- Approved summary excerpts are separate consented records; they are never scraped or inferred automatically from external discussions.
+
+## Meetup/weather architecture
+
+- Sacred Sites are stable entities; a user stores only `sacredSiteId` plus optional selection history/consent metadata.
+- A meetup references its normal Sacred Site/local group but owns its actual meeting-place text, coordinates, timezone, and schedule because the venue may differ from the Site.
+- Weather lookup uses meetup coordinates only when within a provider-declared useful forecast window. Cached results retain provider, fetched time, forecast time, and expiry.
+- Preparation suggestions use versioned deterministic rules over forecast signals where possible. They are advisory, attributable, and never replace organizer-authored `whatToBring` or safety information.
+
+## Authorization model
+
+Every protected operation evaluates:
+
+1. authenticated identity;
+2. account status;
+3. application role for administrative actions;
+4. active entitlement for paid material;
+5. cohort/enrollment scope for cohort material;
+6. ownership for private notes and personal progress;
+7. resource lifecycle state and release time.
+
+Client route guards improve navigation only. Security rules and trusted server checks are the enforcement boundary.
+
+## Event and job model
+
+- External events are recorded by immutable provider event ID before side effects.
+- Handlers are idempotent and safe under duplicate or out-of-order delivery.
+- A job record tracks type, logical key, state, attempts, lease, next attempt, and terminal error.
+- Scheduled release processing uses compiled `cohortReleaseSchedules` and materializes immutable enrollment unlocks. This is the planning baseline; changing it requires an architecture decision because authorization, archive behavior, and repair tooling depend on it.
+- Email is queued from domain events; a separate worker sends and records provider response.
+- Dead-letter/failed jobs are visible in admin operations and alerting.
+
+## Source-of-truth and ownership matrix
+
+| Concern                    | Authoritative owner                                             | Derived/cached data                   | Allowed writers                                              |
+| -------------------------- | --------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
+| Identity                   | Firebase Authentication                                         | Firestore profile                     | User for allowed profile fields; trusted server for status   |
+| Billing facts              | Stripe                                                          | `subscriptions` projection            | Verified webhook/reconciliation only                         |
+| Access decision            | Firestore `entitlements`                                        | Session/UI hints                      | Billing projector and audited override service only          |
+| Admin permissions          | `adminRoleAssignments`                                          | Versioned custom claims               | Privileged role-management service only                      |
+| Cohort membership          | `enrollments`                                                   | Current-enrollment pointer/read model | Assignment/transfer service only                             |
+| Release timing             | Published `cohortReleaseSchedules`                              | Admin calendar views                  | Cohort publishing service only                               |
+| Member archive             | Enrollment `unlocks` for teaching releases and weekly summaries | Archive list/read model               | Release worker/repair service only                           |
+| Email eligibility          | Firestore entitlement, enrollment, schedule, preferences        | Resend delivery status                | Email orchestration service                                  |
+| Sacred Site selection      | `users.sacredSiteId` referencing `sacredSites`                  | Site/member views                     | Member for selection; admin for controlled Site entities     |
+| Meetup facts               | `meetups`                                                       | Weather cache/member view             | Authorized meetup admin                                      |
+| Discussion excerpt consent | `discussionExcerpts` consent snapshot                           | Weekly summary render input           | Contributor consent action plus moderator/editor approval    |
+| Public/editorial content   | Published Firestore content version                             | Next.js cache/search index            | Authorized publishing service                                |
+| Private notes              | Owner's note collection                                         | None outside owner views              | Note owner only through validated paths                      |
+| Migrated source            | Frozen WordPress snapshot                                       | Firestore imported records            | Versioned importer in non-production/final migration windows |
+
+Cross-document rule: when provider and projection disagree, privileged operations reconcile from the authoritative provider; clients never repair projections.
+
+## Recommended server responsibility ownership
+
+These are reversible planning recommendations, not deployed choices:
+
+| Responsibility               | Recommended initial owner                              | Reason                                                                                                           |
+| ---------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Stripe webhooks              | Next.js route handler on Vercel                        | Keeps checkout, portal, and webhook boundary together; must preserve raw-body verification and one receipt store |
+| Scheduled release processing | Firebase Cloud Function with scheduler                 | Natural fit for trusted Firestore batch/fan-out work, resumable processing, and unlock reconciliation            |
+| Email orchestration/jobs     | Firebase Cloud Function; Resend is delivery only       | Runs alongside release schedules and Firestore job state without depending on a browser request                  |
+| Weather retrieval            | Next.js server endpoint with Firestore cache initially | Simple request-time lookup; move prefetch to a scheduled function only if volume/reliability warrants it         |
+| Admin/server actions         | Next.js server actions/route handlers on Vercel        | Keeps admin validation and UI in one application boundary                                                        |
+
+One canonical owner is selected per responsibility before that feature is implemented. Shared domain services and idempotency records prevent provider placement from becoming irreversible.
+
+## Environments and configuration
+
+- Separate development, preview/staging, and production Firebase projects and Stripe/Resend credentials.
+- Never connect preview deployments to production writes by default.
+- Secrets live in managed environment configuration, not the repository.
+- Firebase indexes and security rules are version-controlled and tested in the emulator before deployment.
+- Production changes use reviewed migrations and rollback/runbook steps.
+
+## Observability
+
+- Structured logs with request/job correlation IDs; never log note bodies, tokens, or full webhook payloads by default.
+- Metrics for auth failures, webhook lag/errors, entitlement changes, unlock jobs, email queue/delivery, discussion moderation, and weather failures.
+- Error reporting separated by environment.
+- Audit events for admin, billing projection, role, publishing, and support actions.
+
+## Resilience and performance
+
+- Cache public content with deliberate invalidation on publish.
+- Protect Firestore from unbounded queries using pagination, composite indexes, and bounded discussion/archive views.
+- Use retries with exponential backoff and jitter for transient provider failures.
+- Define recovery point and recovery time objectives before launch; validate exports/backups and restoration.
+- Ensure a provider outage does not revoke already-valid local entitlement unless policy requires it.
+
+## Architecture decisions to record before the relevant build phase
+
+- App Router conventions and content-rendering format.
+- Confirm or revise the recommended Vercel/Cloud Functions ownership before implementing each integration.
+- Unlock materialization versus computed availability.
+- Firebase session-cookie strategy for server-rendered protected routes.
+- Admin implementation is a custom in-app interface backed by Firestore for the initial architecture. Introducing an external CMS later requires a new source-of-truth and authorization decision.
+- Search solution for public content and discussions, because Firestore is not full-text search.
+- Weather, geocoding, maps, analytics, consent, and monitoring providers.
+- Protected media delivery method and acceptable link-sharing risk.
+- External discussion provider/link-access strategy and criteria for moving to native discussions.
