@@ -11,15 +11,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app src tests *.ts *.mjs",
+    "lint": "eslint app src tests scripts *.ts *.mjs",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write app src tests *.json *.mjs *.ts .github/workflows/*.yml docs/architecture/*.md",
-    "format:check": "prettier --check app src tests *.json *.mjs *.ts",
+    "format": "prettier --write app src tests scripts *.json *.mjs *.ts .github/workflows/*.yml docs/**/*.md",
+    "format:check": "prettier --check app src tests scripts *.json *.mjs *.ts docs/**/*.md",
     "test": "node --test --experimental-test-isolation=none tests/unit/*.test.ts",
     "test:rules": "firebase emulators:exec --project demo-sacred-path --only firestore,storage \"node --test --experimental-test-isolation=none tests/rules/*.test.ts\"",
-    "test:smoke": "playwright test"
+    "test:smoke": "firebase emulators:exec --project demo-sacred-path --only auth,firestore,storage \"playwright test\"",
+    "admin:emulator": "node scripts/create-emulator-admin.ts"
   },
   "dependencies": {
+    "firebase-admin": "14.3.0",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"

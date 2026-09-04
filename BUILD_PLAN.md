@@ -42,7 +42,29 @@ Complete as of 2026-09-03. Node.js 24 and npm are selected. The Next.js App Rout
 - Emulator rule tests prove default-deny behavior.
 - Production credentials are absent from local/preview clients.
 
-## Phase 2: public content and admin publishing
+## Phase 2: authentication and onboarding
+
+### Implementation status
+
+Implementation and required verification are complete. Email/password signup/login/logout, verification, reset, Firebase Admin session cookies, member/admin server route boundaries, constrained Firestore profiles, server-acknowledged onboarding with a disabled Sacred Site placeholder, emulator-only admin bootstrap, Security Rules, unit/rules/browser tests, and CI configuration are implemented. The onboarding smoke test observes the server persistence acknowledgement before asserting the unchanged `/members` destination, preventing the asynchronous transaction from being confused with a navigation failure. Format, lint, strict TypeScript, unit tests, the production build, the 8/8 Firebase Security Rules tests, the complete 12/12 Playwright smoke suite, and the authentication/onboarding journey all pass. The Firebase emulator shutdown can emit a rules-runtime `NullPointerException` after the successful test command; it has not affected test results and the emulator ports were confirmed released.
+
+This phase ordering supersedes the earlier plan after explicit owner authorization. The former public-content phase moves to Phase 3; no public CMS work is included here.
+
+### Work
+
+- Firebase email/password signup, login, logout, verification, and password reset.
+- Five-day server-managed Firebase session cookie with origin validation and revocation-aware verification.
+- Member profile/onboarding fields and temporary null Sacred Site selector.
+- Server-enforced `/members/*` and `/admin` boundaries plus constrained profile Security Rules.
+- Local emulator-only administrator bootstrap and positive/negative automated coverage.
+
+### Tests/demo
+
+- Signup → email verification → onboarding → member access.
+- Login, logout, password reset request, unauthenticated member redirect, and ordinary-member admin denial.
+- Firestore owner access and privilege/cross-user/unauthenticated denial.
+
+## Phase 3: public content and admin publishing
 
 ### Work
 
@@ -57,13 +79,12 @@ Complete as of 2026-09-03. Node.js 24 and npm are selected. The Next.js App Rout
 - Anonymous users cannot see drafts or admin data.
 - Accessibility, metadata, canonical, sitemap, redirect-loop, and rendering tests pass.
 
-## Phase 3: authentication and onboarding
+## Phase 3A: authentication follow-ups deferred from Phase 2
 
 ### Work
 
-- Implement selected Firebase Authentication methods and secure server session handling.
-- Add profile, consent/preferences, account status, onboarding, timezone, and Sacred Network site selection.
-- Collect full name, verified email, bounded background, country/region, and `sacredSiteId` selected from the active controlled list.
+- Add communication preferences, account-status workflows, timezone/locale, and controlled Sacred Site selection when their source entities exist.
+- Add Google sign-in only when authorized, linking by Firebase `uid` rather than redesigning profiles.
 - Add account recovery and deletion/export request entry points.
 
 ### Tests/demo

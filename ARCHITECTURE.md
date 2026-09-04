@@ -39,6 +39,17 @@ Admin browser -> authenticated admin routes -> role-checked server operations
 - Custom claims may accelerate broad role checks, but `adminRoleAssignments` in Firestore remains the durable role source. Claims are a cache with a version and expiry/revocation strategy, never the only authorization source for sensitive writes.
 - Initial providers are email/password with email verification and password reset. Identity/profile records key on Firebase `uid`, not provider email, so Google can be linked later.
 
+### Implemented Phase 2 session boundary
+
+- The browser signs in with the Firebase client SDK against the local Auth emulator and sends a freshly minted ID token to `POST /api/auth/session`.
+- The Next.js server verifies that token, requires verified email, and exchanges it through Firebase Admin for a five-day Firebase session cookie.
+- The cookie is named `__session`, is `HttpOnly`, `SameSite=Lax`, path-scoped to `/`, and `Secure` outside local development. Session creation/deletion also checks the request origin.
+- Member layouts verify the session cookie with revocation checking and require a completed Firestore profile. Admin layouts additionally read the server-owned profile role and deny ordinary members.
+- Onboarding submission crosses a server-owned transaction boundary: `POST /api/onboarding` validates the verified session and input, writes only the intended member profile fields with fixed privileged defaults, and performs an immediate same-store read-back before acknowledging completion. The browser navigates only after that acknowledgement; protected layouts use the same canonical onboarding-state parser and opt out of route caching.
+- Client navigation visibility is not an authorization control. Server layouts protect pages and Firestore Security Rules independently protect direct data access.
+- Local server/client Firebase initialization refuses non-`demo-*` projects while emulator mode is enabled. No service-account credential is present in the repository.
+- Google sign-in can later link another provider to the same Firebase `uid`; no user document is keyed by email/provider.
+
 ### Firestore
 
 - Canonical application records for profiles, content, curriculum, cohorts, compiled cohort-release schedules, unlocks, progress, private notes, discussions, meetups, job receipts, and audit events.
@@ -163,7 +174,7 @@ Client route guards improve navigation only. Security rules and trusted server c
 | Identity                   | Firebase Authentication                                         | Firestore profile                     | User for allowed profile fields; trusted server for status   |
 | Billing facts              | Stripe                                                          | `subscriptions` projection            | Verified webhook/reconciliation only                         |
 | Access decision            | Firestore `entitlements`                                        | Session/UI hints                      | Billing projector and audited override service only          |
-| Admin permissions          | `adminRoleAssignments`                                          | Versioned custom claims               | Privileged role-management service only                      |
+| Admin permissions          | Phase 2: server-owned `users.role`; later `adminRoleAssignments` | Optional custom-claim cache            | Firebase Admin/local emulator bootstrap only in Phase 2      |
 | Cohort membership          | `enrollments`                                                   | Current-enrollment pointer/read model | Assignment/transfer service only                             |
 | Release timing             | Published `cohortReleaseSchedules`                              | Admin calendar views                  | Cohort publishing service only                               |
 | Member archive             | Enrollment `unlocks` for teaching releases and weekly summaries | Archive list/read model               | Release worker/repair service only                           |

@@ -16,16 +16,21 @@
 
 Profile and onboarding record.
 
-- `email`, `fullName`, `photoUrl`
+- Phase 2 implemented fields: `uid`, `email`, `fullName`, `background`, `countryOrRegion`, `sacredSiteId`, `cohortId`, `role`, `onboarding`, `createdAt`, `updatedAt`
+- Future optional field: `photoUrl`
 - `status`: `active | suspended | deletion_pending | deleted`
 - `roleVersion`: optional cache-version pointer used to invalidate custom claims; role assignments are not user-editable and are authoritative in `adminRoleAssignments`
-- `locale`, `timezone`
-- `background` (bounded onboarding text with explicit privacy classification)
-- `countryCode`, `region`
+- Future fields: `locale`, `timezone`
+- `background` is bounded onboarding text with explicit privacy classification
+- `countryOrRegion` is initial bounded free text; controlled normalization can be added without changing identity
 - `sacredSiteId` (reference only; do not duplicate Site fields)
 - `onboarding`: `{state, completedAt, version}`
 - `communicationPreferences`: categories and consent timestamps
 - Stripe identifiers may be stored in a server-only companion document if rules cannot safely hide fields.
+
+Phase 2 onboarding uses a verified-session server endpoint to create the profile, fix `role: member`, null cohort/Sacred Site, canonical completion state, and server timestamps, then read the record back before success. Firestore rules independently constrain direct client access: a verified member may create only the same exact safe shape and may later change only `fullName`, `background`, `countryOrRegion`, null `sacredSiteId`, and `updatedAt`. Clients cannot change identity, email, role, cohort, onboarding state, creation time, or privileged collections. The null-only Sacred Site rule is intentionally temporary until controlled Site records exist.
+
+For Phase 2, `users.role` is the server-owned authorization field used by `/admin`. The planned `adminRoleAssignments` collection remains the later durable capability model; migrating to it must be additive and keep profile roles read-only to clients.
 
 ### `users/{uid}/private/profile`
 

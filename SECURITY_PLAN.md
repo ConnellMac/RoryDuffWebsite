@@ -29,6 +29,9 @@
 - MFA is not required for ordinary members initially. Admin identity/session design must support enforcing MFA at launch or later without changing application authorization; enable it at launch if Firebase/provider support and operations are ready.
 - Rate-limit and monitor sign-in, account creation, recovery, invitation, and verification flows.
 - Disable/suspend accounts through durable application status in addition to provider controls.
+- Phase 2 implements email/password registration, reset, verification, and logout against emulators. A verified Firebase ID token is exchanged server-side for a five-day `HttpOnly`, `SameSite=Lax` Firebase session cookie; production-mode cookies are `Secure`.
+- Session creation/deletion requires an allowed origin. Protected server layouts verify cookies with revocation checking; `/members/*` also requires completed onboarding, and `/admin` requires the server-owned `super_admin` profile role.
+- The local bootstrap script creates an emulator-only administrator from operator-supplied environment variables and refuses to run unless all emulator hosts and the `demo-sacred-path` project are explicit. No default password exists.
 
 ## Authorization
 
@@ -40,6 +43,8 @@
 - Admin roles map to narrow capabilities. Support staff do not automatically receive note or content-edit access.
 - Role grants, revocations, and custom-claim refresh use a versioned invalidation strategy so a revoked admin cannot rely on a long-lived token.
 - Test rules with positive and negative emulator cases, including cross-user and cross-cohort attacks.
+- Phase 2 profile rules allow verified members to create/read their own constrained record and update only allowlisted self-service fields. Tests cover own access, cross-user denial, unverified creation denial, role/cohort escalation denial, privileged-collection denial, and unauthenticated denial.
+- The onboarding UI uses a same-origin, verified-session server endpoint. It validates bounded input, fixes identity/role/cohort/Sacred Site fields rather than accepting privileged values from the browser, commits atomically, and confirms the canonical completion marker with an immediate read-back before returning success. Internal persistence errors are not returned to the browser.
 
 ## Payment security
 
