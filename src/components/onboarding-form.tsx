@@ -2,7 +2,8 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { clientAuth } from "@/src/lib/firebase/client";
-export function OnboardingForm() {
+import type { SacredSiteView } from "@/src/lib/sacred-sites/model";
+export function OnboardingForm({ sacredSites }: { sacredSites: SacredSiteView[] }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -21,6 +22,7 @@ export function OnboardingForm() {
           fullName: String(data.get("fullName") ?? "").trim(),
           background: String(data.get("background") ?? "").trim(),
           countryOrRegion: String(data.get("countryOrRegion") ?? "").trim(),
+          sacredSiteId: String(data.get("sacredSiteId") ?? "").trim(),
         }),
       });
       const result = (await response.json()) as {
@@ -53,12 +55,22 @@ export function OnboardingForm() {
         </label>
         <label>
           Nearest Sacred Site
-          <select name="sacredSiteId" disabled>
-            <option>Sacred Sites will be available in a later phase</option>
+          <select name="sacredSiteId" required disabled={sacredSites.length === 0}>
+            <option value="">Select a Sacred Site</option>
+            {sacredSites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.name} — {site.region ? `${site.region}, ` : ""}
+                {site.country}
+              </option>
+            ))}
           </select>
         </label>
-        <p>Your Sacred Site can be selected when the controlled list is available.</p>
-        <button type="submit">Complete onboarding</button>
+        {sacredSites.length === 0 && (
+          <p role="alert">No active Sacred Sites are available. Please contact support.</p>
+        )}
+        <button type="submit" disabled={sacredSites.length === 0}>
+          Complete onboarding
+        </button>
       </form>
       {message && <p role="alert">{message}</p>}
     </section>

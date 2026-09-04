@@ -2,7 +2,7 @@
 
 ## Delivery approach
 
-Work in small vertical slices. Each phase has a demonstrable outcome, automated checks proportional to risk, and an explicit exit gate. No application initialization is part of the current planning task.
+Work in small vertical slices. Each phase has a demonstrable outcome, automated checks proportional to risk, and an explicit exit gate.
 
 ## Phase 0: decisions and source discovery
 
@@ -64,26 +64,35 @@ This phase ordering supersedes the earlier plan after explicit owner authorizati
 - Login, logout, password reset request, unauthenticated member redirect, and ordinary-member admin denial.
 - Firestore owner access and privilege/cross-user/unauthenticated denial.
 
-## Phase 3: public content and admin publishing
+## Phase 3: Sacred Sites, cohorts, and secure member association
+
+### Implementation status
+
+Complete as of 2026-09-04. The local-emulator implementation adds controlled Sacred Site records, real onboarding/profile Site selection, cohort records and current member assignment, minimal role-scoped admin tools, strict server validation, append-only audit events, default-deny rules, and unit/rules/browser coverage. Formatting, ESLint, strict TypeScript, 10/10 unit tests, the production build, production-server startup, the production dependency audit, 13/13 combined Firestore/Storage Security Rules tests, and 13/13 Playwright smoke tests pass. It does not add automatic cohort enrollment, programme progression, billing, emails, meetups, weather, discussions, migration, production resources, or deployment.
 
 ### Work
 
-- Implement public content schema and safe rich-text/media rendering.
-- Build admin roles and CRUD/preview/publish workflows for pages, articles, books, media, navigation, and SEO.
-- Add sitemap, robots, metadata, structured data, redirects, caching, and invalidation.
-- Provide audit records and publishing validation.
+- Implement stable `sacredSites` records with validated coordinates/timezones and reversible active state.
+- Replace the onboarding placeholder with active-Site selection and allow members to change their reference later.
+- Implement cohort records without programme/week progression or automatic cutoff assignment.
+- Build minimal admin Site/cohort CRUD, cohort member viewing, and authorized manual assignment/transfer.
+- Keep client Firestore writes to Sites/cohorts denied; enforce current role capabilities and all privileged validation in server operations.
+- Record Site/cohort changes and member assignment/transfer as append-only server audit events.
 
 ### Tests/demo
 
-- Editor can draft, preview, publish, revise, and archive without code changes.
-- Anonymous users cannot see drafts or admin data.
-- Accessibility, metadata, canonical, sitemap, redirect-loop, and rendering tests pass.
+- A member can query active Sites, keep a historical inactive selection visible, and select/change only to an active Site.
+- Members cannot alter role/`cohortId`, write controlled entities, or use admin pages/APIs.
+- Authorized roles can create/edit/deactivate/reactivate Sites; a super admin can manage cohorts; super admin/support can assign or transfer an ordinary member with a reason.
+- Phase 2 authentication/onboarding behavior continues to pass.
 
-## Phase 3A: authentication follow-ups deferred from Phase 2
+This Phase 3 scope supersedes the former public-content Phase 3 after explicit owner authorization. Public content and publishing remain deferred and will be scheduled separately rather than silently renumbering an approved future phase.
+
+## Deferred authentication follow-ups from Phase 2
 
 ### Work
 
-- Add communication preferences, account-status workflows, timezone/locale, and controlled Sacred Site selection when their source entities exist.
+- Add communication preferences, account-status workflows, and timezone/locale.
 - Add Google sign-in only when authorized, linking by Firebase `uid` rather than redesigning profiles.
 - Add account recovery and deletion/export request entry points.
 
@@ -138,11 +147,11 @@ This phase ordering supersedes the earlier plan after explicit owner authorizati
 - Private notes never appear in admin search, discussion, analytics, logs, or email.
 - Cross-cohort discussion access fails; abuse/report flows are usable and auditable.
 
-## Phase 7: network sites, meetups, and weather
+## Phase 7: meetups and weather
 
 ### Work
 
-- Build admin-managed sites and meetup schedule with timezone handling.
+- Extend the Phase 3 Sacred Site foundation with an admin-managed meetup schedule and timezone handling.
 - Keep `user.sacredSiteId`, `meetup.sacredSiteId`, and meetup venue/coordinates distinct.
 - Add member discovery/filtering and selected-site views.
 - Integrate the chosen weather adapter with caching, attribution, licensing, and graceful fallback.

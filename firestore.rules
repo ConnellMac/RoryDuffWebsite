@@ -2,6 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function activeSacredSite(siteId) {
+      return siteId is string
+        && exists(/databases/$(database)/documents/sacredSites/$(siteId))
+        && get(/databases/$(database)/documents/sacredSites/$(siteId)).data.active == true;
+    }
     function validStrings(d) {
       return d.fullName is string && d.fullName.size() >= 1 && d.fullName.size() <= 120
         && d.email is string && d.email == request.auth.token.email
@@ -11,14 +16,16 @@ service cloud.firestore {
     function validCreate(uid) {
       return request.resource.data.keys().hasOnly(['uid','fullName','email','background','countryOrRegion','sacredSiteId','cohortId','role','onboarding','createdAt','updatedAt'])
         && request.resource.data.uid == uid && request.resource.data.role == 'member'
-        && request.resource.data.cohortId == null && request.resource.data.sacredSiteId == null
+        && request.resource.data.cohortId == null
+        && activeSacredSite(request.resource.data.sacredSiteId)
         && request.resource.data.onboarding.state == 'complete' && request.resource.data.onboarding.version == 1
         && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
         && validStrings(request.resource.data);
     }
     function validUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName','background','countryOrRegion','sacredSiteId','updatedAt'])
-        && request.resource.data.sacredSiteId == null && request.resource.data.updatedAt == request.time
+        && (request.resource.data.sacredSiteId == resource.data.sacredSiteId || activeSacredSite(request.resource.data.sacredSiteId))
+        && request.resource.data.updatedAt == request.time
         && validStrings(request.resource.data);
     }
     match /users/{uid} {
@@ -26,6 +33,18 @@ service cloud.firestore {
       allow create: if owner(uid) && request.auth.token.email_verified == true && validCreate(uid);
       allow update: if owner(uid) && validUpdate();
       allow delete: if false;
+    }
+    match /sacredSites/{siteId} {
+      allow get: if request.auth != null
+        && (resource.data.active == true
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.sacredSiteId == siteId);
+      allow list: if request.auth != null && resource.data.active == true;
+      allow create, update, delete: if false;
+    }
+    match /cohorts/{cohortId} {
+      allow get: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.cohortId == cohortId;
+      allow list, create, update, delete: if false;
     }
     match /{document=**} { allow read, write: if false; }
   }

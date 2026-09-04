@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { seedSacredSite } from "./emulator-fixtures";
 
 test("Phase 2 authentication and authorization journey", async ({ page, request }) => {
   const email = `member-${Date.now()}@example.test`;
   const password = "TestPassword123!";
+  await seedSacredSite("onboarding-site");
   await test.step("member routes redirect before authentication", async () => {
     await page.goto("/members");
     await expect(page).toHaveURL(/\/login$/);
@@ -30,7 +32,7 @@ test("Phase 2 authentication and authorization journey", async ({ page, request 
     await page.getByLabel("Full name").fill("Test Member");
     await page.getByLabel("Brief background").fill("Integration test profile");
     await page.getByLabel("Country or region").fill("United Kingdom");
-    await expect(page.getByLabel("Nearest Sacred Site")).toBeDisabled();
+    await page.getByLabel("Nearest Sacred Site").selectOption("onboarding-site");
     const persisted = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/onboarding") && response.request().method() === "POST",

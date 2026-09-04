@@ -18,10 +18,17 @@ export async function POST(request: Request) {
   try {
     const input = parseOnboardingInput(await request.json());
     const reference = adminFirestore.doc(`users/${session.uid}`);
+    const siteReference = adminFirestore.doc(`sacredSites/${input.sacredSiteId}`);
 
     await adminFirestore.runTransaction(async (transaction) => {
-      const existing = await transaction.get(reference);
+      const [existing, site] = await Promise.all([
+        transaction.get(reference),
+        transaction.get(siteReference),
+      ]);
       const existingProfile = existing.data();
+
+      if (!site.exists || site.data()?.active !== true)
+        throw new InvalidOnboardingInput("Select an active Sacred Site.");
 
       if (
         existing.exists &&
@@ -34,7 +41,10 @@ export async function POST(request: Request) {
 
       if (existing.exists) {
         transaction.update(reference, {
-          ...input,
+          fullName: input.fullName,
+          background: input.background,
+          countryOrRegion: input.countryOrRegion,
+          sacredSiteId: input.sacredSiteId,
           onboarding: { state: "complete", version: 1 },
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -43,9 +53,11 @@ export async function POST(request: Request) {
 
       transaction.create(reference, {
         uid: session.uid,
-        ...input,
+        fullName: input.fullName,
+        background: input.background,
+        countryOrRegion: input.countryOrRegion,
+        sacredSiteId: input.sacredSiteId,
         email: session.email,
-        sacredSiteId: null,
         cohortId: null,
         role: "member",
         onboarding: { state: "complete", version: 1 },

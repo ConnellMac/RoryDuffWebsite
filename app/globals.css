@@ -65,6 +65,28 @@ a:focus-visible {
   gap: 1rem;
 }
 
+.admin-form,
+.admin-form label {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-form {
+  gap: 1rem;
+  max-width: 42rem;
+  margin-block: 1rem 2rem;
+}
+
+section + section,
+details + details {
+  margin-top: 1.5rem;
+}
+
+details {
+  padding: 0.75rem;
+  border: 1px solid #b9c2b9;
+}
+
 input,
 textarea,
 select,

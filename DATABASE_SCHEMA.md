@@ -16,7 +16,7 @@
 
 Profile and onboarding record.
 
-- Phase 2 implemented fields: `uid`, `email`, `fullName`, `background`, `countryOrRegion`, `sacredSiteId`, `cohortId`, `role`, `onboarding`, `createdAt`, `updatedAt`
+- Phase 3 implemented fields: `uid`, `email`, `fullName`, `background`, `countryOrRegion`, `sacredSiteId`, `cohortId`, `role`, `onboarding`, `createdAt`, `updatedAt`
 - Future optional field: `photoUrl`
 - `status`: `active | suspended | deletion_pending | deleted`
 - `roleVersion`: optional cache-version pointer used to invalidate custom claims; role assignments are not user-editable and are authoritative in `adminRoleAssignments`
@@ -28,7 +28,9 @@ Profile and onboarding record.
 - `communicationPreferences`: categories and consent timestamps
 - Stripe identifiers may be stored in a server-only companion document if rules cannot safely hide fields.
 
-Phase 2 onboarding uses a verified-session server endpoint to create the profile, fix `role: member`, null cohort/Sacred Site, canonical completion state, and server timestamps, then read the record back before success. Firestore rules independently constrain direct client access: a verified member may create only the same exact safe shape and may later change only `fullName`, `background`, `countryOrRegion`, null `sacredSiteId`, and `updatedAt`. Clients cannot change identity, email, role, cohort, onboarding state, creation time, or privileged collections. The null-only Sacred Site rule is intentionally temporary until controlled Site records exist.
+Phase 3 onboarding uses a verified-session server endpoint to create the profile, fix `role: member` and null `cohortId`, validate the selected active `sacredSites/{sacredSiteId}` reference in the same transaction, set the canonical completion state/server timestamps, and read the record back before success. The profile stores only the Site ID. An onboarded member may later change that reference through a same-origin server endpoint, again only to an active Site. Firestore rules independently permit the same constrained reference change while preventing identity, email, role, `cohortId`, onboarding state, and creation-time changes.
+
+`users.cohortId` is the implemented Phase 3 current-assignment projection. Only the server-side cohort assignment/transfer service can change it, and every change creates an append-only audit event containing the previous and new IDs plus the operator's bounded reason. Durable programme-specific enrollment history remains the later `enrollments` source of truth once programmes are implemented; it will be introduced additively rather than fabricating a Phase 3 programme record.
 
 For Phase 2, `users.role` is the server-owned authorization field used by `/admin`. The planned `adminRoleAssignments` collection remains the later durable capability model; migrating to it must be additive and keep profile roles read-only to clients.
 
@@ -155,12 +157,19 @@ Teaching email versions require a canonical source content reference and human a
 
 ### `cohorts/{cohortId}`
 
-- `programId`, `curriculumVersionId`
-- `name`, `status`: `draft | open | active | completed | archived`
-- `timezone`, `startsAt`, `endsAt`
-- `enrollmentOpensAt`, `enrollmentClosesAt`, `capacity`
-- `scheduleVersion`
-- `currentWeekIdProjection`, `currentWeekCalculatedAt` (repairable display/query projection; compiled schedules are authoritative)
+Phase 3 implemented fields:
+
+- `id`: stable opaque document ID, repeated in the record
+- `name`
+- `startDate`: validated calendar date (`YYYY-MM-DD`) interpreted in the cohort timezone by later scheduling code
+- `timezone`: valid IANA timezone
+- `enrollmentOpenAt`, `enrollmentCutoffAt`: UTC Firestore timestamps parsed from explicit-offset ISO instants; open must precede cutoff
+- `status`: `draft | open | active | completed | archived`
+- `createdAt`, `updatedAt`: server timestamps
+
+Only `super_admin` may create or edit cohort definitions in Phase 3. `super_admin` and `member_support_operations` may view cohort administration and assign/transfer ordinary members; the service accepts only an existing member and an existing `open` or `active` cohort. Automatic cutoff assignment, curriculum/programme references, capacity, schedules, and current-week projections are deliberately deferred until their build phases.
+
+Future cohort fields added with the programme engine include `programId`, `curriculumVersionId`, `endsAt`, `capacity`, `scheduleVersion`, `currentWeekIdProjection`, and `currentWeekCalculatedAt`.
 
 ### `cohorts/{cohortId}/weekSchedules/{weekId}`
 
@@ -284,10 +293,14 @@ Both contributor permission and editorial approval are required before summary u
 
 ### `sacredSites/{siteId}`
 
-- `stableId`, `name`, `slug`, `status`: `active | inactive`
-- `countryCode`, `region`
-- `coordinates` as GeoPoint (`latitude`/`longitude`) with an explicit precision/privacy policy
-- `timezone`, `description`
+- `id`: stable opaque document ID, repeated in the record
+- `name`, `country`, `region`, `description`
+- `latitude`, `longitude`: finite numeric fields validated to `[-90, 90]` and `[-180, 180]`
+- `timezone`: valid IANA timezone
+- `active`: boolean lifecycle flag
+- `createdAt`, `updatedAt`: server timestamps
+
+Phase 3 uses explicit coordinate fields rather than a Firestore `GeoPoint`; later radius/search requirements may add a derived geospatial index without changing the canonical values. Members can query active Sites. A member whose profile already references an inactive Site can still read that one record for historical display, but cannot newly select it. Site documents are never writable through the client SDK. `super_admin` and `content_admin` use server-authorized operations to create/edit and soft-deactivate/reactivate records; no destructive delete route is provided.
 
 ### `meetups/{meetupId}`
 

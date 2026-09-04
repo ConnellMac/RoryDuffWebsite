@@ -10,18 +10,26 @@ test("normalizes valid onboarding input", () => {
       fullName: "  Test Member ",
       background: "  A brief background. ",
       countryOrRegion: " United Kingdom ",
+      sacredSiteId: " site-1 ",
     }),
     {
       fullName: "Test Member",
       background: "A brief background.",
       countryOrRegion: "United Kingdom",
+      sacredSiteId: "site-1",
     },
   );
 });
 
 test("rejects invalid onboarding input", () => {
   assert.throws(
-    () => parseOnboardingInput({ fullName: "", background: "", countryOrRegion: "UK" }),
+    () =>
+      parseOnboardingInput({
+        fullName: "",
+        background: "",
+        countryOrRegion: "UK",
+        sacredSiteId: "site-1",
+      }),
     InvalidOnboardingInput,
   );
   assert.throws(
@@ -30,6 +38,7 @@ test("rejects invalid onboarding input", () => {
         fullName: "Test Member",
         background: "x".repeat(2001),
         countryOrRegion: "UK",
+        sacredSiteId: "site-1",
       }),
     InvalidOnboardingInput,
   );

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { adminAuth, adminFirestore } from "@/src/lib/firebase/admin";
-import { hasCompletedOnboarding } from "@/src/lib/users/profile";
+import { hasCompletedOnboarding, isAdminRole } from "@/src/lib/users/profile";
 
 export const sessionCookieName = "__session";
 export const sessionDurationMilliseconds = 5 * 24 * 60 * 60 * 1000;
@@ -32,6 +32,6 @@ export async function requireOnboardedMember() {
 
 export async function requireAdmin() {
   const member = await requireOnboardedMember();
-  if (member.profile?.role !== "super_admin") redirect("/members?notice=admin-denied");
+  if (!isAdminRole(member.profile?.role)) redirect("/members?notice=admin-denied");
   return member;
 }
